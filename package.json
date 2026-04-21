@@ -3,11 +3,13 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "server": "json-server --watch db.json --port 3001",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "api": "json-server --watch db.json --port 3001",
     "lint": "expo lint"
   },
   "dependencies": {
@@ -40,9 +42,10 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "json-server": "^1.0.0-beta.15",
+    "typescript": "~5.9.2"
   },
   "private": true
 }

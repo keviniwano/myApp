@@ -3,27 +3,55 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [senha, setSenha] = useState('');
   const [senhaVisivel, setSenhaVisivel] = useState(false);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   async function handleLogin() {
-    if (email === 'teste' && senha === '123') {
-      await AsyncStorage.setItem('user', 'logado');
-      router.push('/home');
-    } else {
+    if (!login || !senha) {
+      alert('Preencha usuario/email e senha');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const response = await fetch('http://localhost:3001/usuarios');
+      const usuarios: { usuario: string; email: string; senha: string }[] =
+        await response.json();
+
+      const loginNormalizado = login.trim().toLowerCase();
+      const usuarioEncontrado = usuarios.find((usuario) => {
+        const usuarioMatch = usuario.usuario.toLowerCase() === loginNormalizado;
+        const emailMatch = usuario.email.toLowerCase() === loginNormalizado;
+        const senhaMatch = usuario.senha === senha;
+        return senhaMatch && (usuarioMatch || emailMatch);
+      });
+
+      if (usuarioEncontrado) {
+        await AsyncStorage.setItem('user', 'logado');
+        router.push('/home');
+        return;
+      }
+
       alert('Login inválido');
+    } catch {
+      alert('Nao foi possivel conectar ao servidor fake (json-server).');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -32,14 +60,13 @@ export default function Login() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
     >
-      <Text style={styles.title}>Bem-vindo seu arrombado!</Text>
+      <Text style={styles.title}>Bem-vindo!</Text>
 
       <TextInput
-        placeholder="Email"
+        placeholder="Usuario ou email"
         style={styles.input}
-        onChangeText={setEmail}
-        value={email}
-        keyboardType="email-address"
+        onChangeText={setLogin}
+        value={login}
         autoCapitalize="none"
         autoCorrect={false}
         placeholderTextColor="#888"
@@ -65,8 +92,12 @@ export default function Login() {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Entrar</Text>
+      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Entrar</Text>
+        )}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
@@ -110,13 +141,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#1e90ff',
+    backgroundColor: '#F5C227',
     height: 50,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: '#1e90ff',
+    shadowColor: '#F5C227',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
