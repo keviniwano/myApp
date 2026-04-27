@@ -1,16 +1,26 @@
 {
   "usuarios": [
     {
-      "id": 1,
+      "id": "1",
       "usuario": "teste",
       "senha": "123",
-      "email": "teste@empresa.com"
+      "email": "teste@empresa.com",
+      "nomeCompleto": "teste1"
     },
     {
-      "id": 2,
+      "id": "2",
       "usuario": "admin",
       "senha": "admin",
-      "email": "loch.1886@gmail.com"
+      "email": "loch.1886@gmail.com",
+      "nomeCompleto": "Kevin Iwano"
+    },
+    {
+      "usuario": "Richard",
+      "nomeCompleto": "Richard",
+      "email": "richard@gmail.com",
+      "senha": "Xereca14@",
+      "id": "ELwO_sqYQUc"
     }
-  ]
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
 }

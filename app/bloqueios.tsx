@@ -1,8 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome6, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 const STRICT_MODE_KEY = 'strict_mode_config';
 const HORAS = Array.from({ length: 24 }, (_, i) => i);
@@ -19,16 +19,23 @@ const ITENS = [
 
 export default function Bloqueios() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ quick?: string }>();
   const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [sitesBloqueados, setSitesBloqueados] = useState<string[]>([
+    'https://www.betano.bet.br',
+    'https://www.estrelabet.bet.br',
+  ]);
+  const [novoSite, setNovoSite] = useState('');
   const [duracaoHoras, setDuracaoHoras] = useState(1);
   const [duracaoMinutos, setDuracaoMinutos] = useState(0);
   const [ativoAte, setAtivoAte] = useState<number | null>(null);
+  const [agora, setAgora] = useState(Date.now());
 
-  const ativo = !!ativoAte && ativoAte > Date.now();
+  const ativo = !!ativoAte && ativoAte > agora;
 
   const tempoRestante = useMemo(() => {
     if (!ativoAte) return null;
-    const diffMs = ativoAte - Date.now();
+    const diffMs = ativoAte - agora;
     if (diffMs <= 0) return null;
     const totalSegundos = Math.floor(diffMs / 1000);
     const h = Math.floor(totalSegundos / 3600);
@@ -37,12 +44,14 @@ export default function Bloqueios() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s
       .toString()
       .padStart(2, '0')}`;
-  }, [ativoAte]);
+  }, [ativoAte, agora]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (ativoAte && ativoAte <= Date.now()) setAtivoAte(null);
-    }, 1000);
+      const now = Date.now();
+      setAgora(now);
+      if (ativoAte && ativoAte <= now) setAtivoAte(null);
+    }, 250);
     return () => clearInterval(interval);
   }, [ativoAte]);
 
@@ -50,16 +59,29 @@ export default function Bloqueios() {
     async function carregar() {
       const raw = await AsyncStorage.getItem(STRICT_MODE_KEY);
       if (!raw) return;
-      const dados = JSON.parse(raw) as { selecionados: string[]; ativoAte: number | null };
+      const dados = JSON.parse(raw) as {
+        selecionados: string[];
+        ativoAte: number | null;
+        sitesBloqueados?: string[];
+      };
       setSelecionados(dados.selecionados || []);
       setAtivoAte(dados.ativoAte || null);
+      if (dados.sitesBloqueados?.length) setSitesBloqueados(dados.sitesBloqueados);
     }
     carregar();
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem(STRICT_MODE_KEY, JSON.stringify({ selecionados, ativoAte }));
-  }, [selecionados, ativoAte]);
+    if (!params.quick || ativo) return;
+    const minutos = Number(params.quick);
+    if (!Number.isFinite(minutos) || minutos <= 0) return;
+    setDuracaoHoras(Math.floor(minutos / 60));
+    setDuracaoMinutos(minutos % 60);
+  }, [params.quick, ativo]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(STRICT_MODE_KEY, JSON.stringify({ selecionados, ativoAte, sitesBloqueados }));
+  }, [selecionados, ativoAte, sitesBloqueados]);
 
   function alternarItem(item: string) {
     if (ativo) return;
@@ -71,8 +93,40 @@ export default function Bloqueios() {
   function ativarModo() {
     const totalMin = duracaoHoras * 60 + duracaoMinutos;
     if (totalMin <= 0) return alert('Selecione um tempo valido.');
-    if (selecionados.length === 0) return alert('Selecione ao menos um app/site.');
+    if (selecionados.length === 0 && sitesBloqueados.length === 0) {
+      return alert('Selecione ao menos um app ou adicione um site.');
+    }
     setAtivoAte(Date.now() + totalMin * 60 * 1000);
+  }
+
+  function adicionarSite() {
+    if (ativo) return;
+    const site = novoSite.trim();
+    if (!site) return;
+    if (sitesBloqueados.includes(site)) {
+      alert('Esse site já está na lista.');
+      return;
+    }
+    setSitesBloqueados((atual) => [...atual, site]);
+    setNovoSite('');
+  }
+
+  function atualizarSite(index: number, valor: string) {
+    if (ativo) return;
+    setSitesBloqueados((atual) => atual.map((item, i) => (i === index ? valor : item)));
+  }
+
+  function removerSite(index: number) {
+    if (ativo) return;
+    setSitesBloqueados((atual) => atual.filter((_, i) => i !== index));
+  }
+
+  function acaoBotaoPrincipal() {
+    if (ativo) {
+      setAtivoAte(null);
+      return;
+    }
+    ativarModo();
   }
 
   return (
@@ -82,14 +136,18 @@ export default function Bloqueios() {
         <MaterialCommunityIcons name="information-outline" size={20} color="#9f9fa6" />
       </View>
 
-      <View style={styles.ringOuter}>
-        <View style={styles.ringInner}>
-          <MaterialCommunityIcons name="lock" size={30} color="#F59E0B" />
+      <Pressable style={[styles.ringOuter, ativo && styles.ringOuterActive]} onPress={acaoBotaoPrincipal}>
+        <View style={[styles.ringInner, ativo && styles.ringInnerActive]}>
+          <MaterialCommunityIcons name={ativo ? 'lock-check' : 'lock'} size={30} color="#F59E0B" />
         </View>
-      </View>
+      </Pressable>
 
       <Text style={styles.timer}>{tempoRestante ?? '00:00:00'}</Text>
-      <Text style={styles.subtitle}>Bloqueios protegidos contra bypass durante o timer.</Text>
+      <Text style={styles.subtitle}>
+        {ativo
+          ? 'Modo estrito ativo. Toque no cadeado para encerrar.'
+          : 'Toque no cadeado para iniciar a contagem regressiva.'}
+      </Text>
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>METODO DE DESBLOQUEIO</Text>
@@ -162,36 +220,76 @@ export default function Bloqueios() {
         {ITENS.map((item) => {
           const checked = selecionados.includes(item.nome);
           return (
-            <View key={item.nome} style={styles.item}>
-              <View style={styles.itemLeft}>
-                {item.pack === 'fa6' ? (
-                  <FontAwesome6 name={item.icone} size={20} color={item.cor} />
-                ) : (
-                  <MaterialCommunityIcons name={item.icone} size={22} color={item.cor} />
-                )}
-                <Text style={styles.itemText}>{item.nome}</Text>
+            <Pressable
+              key={item.nome}
+              onPress={() => alternarItem(item.nome)}
+              disabled={ativo}
+              style={({ pressed, hovered }) => [
+                styles.item,
+                checked && styles.itemChecked,
+                (pressed || hovered) && !ativo && styles.itemInteractive,
+              ]}
+            >
+              <View style={styles.itemContent}>
+                <View style={styles.itemLeft}>
+                  {item.pack === 'fa6' ? (
+                    <FontAwesome6 name={item.icone} size={20} color={item.cor} />
+                  ) : (
+                    <MaterialCommunityIcons name={item.icone} size={22} color={item.cor} />
+                  )}
+                  <Text style={styles.itemText}>{item.nome}</Text>
+                </View>
+                <Switch
+                  value={checked}
+                  onValueChange={() => alternarItem(item.nome)}
+                  disabled={ativo}
+                  trackColor={{ false: '#3b3b3b', true: '#F59E0B' }}
+                  thumbColor={checked ? '#111' : '#fff'}
+                />
               </View>
-              <Switch
-                value={checked}
-                onValueChange={() => alternarItem(item.nome)}
-                disabled={ativo}
-                trackColor={{ false: '#3b3b3b', true: '#F59E0B' }}
-                thumbColor={checked ? '#111' : '#fff'}
-              />
-            </View>
+            </Pressable>
           );
         })}
       </View>
 
-      {ativo ? (
-        <Pressable style={styles.btnStop} onPress={() => setAtivoAte(null)}>
-          <Text style={styles.btnStopText}>Encerrar Modo Estrito</Text>
-        </Pressable>
-      ) : (
-        <Pressable style={styles.btnStart} onPress={ativarModo}>
-          <Text style={styles.btnStartText}>Ativar Modo Estrito</Text>
-        </Pressable>
-      )}
+      <View style={styles.card}>
+        <Text style={styles.cardLabel}>SITES PERSONALIZADOS</Text>
+        <Text style={styles.sitesHint}>Adicione URLs para bloquear durante o modo estrito.</Text>
+
+        {sitesBloqueados.map((site, index) => (
+          <View key={`site-${index}`} style={styles.siteRow}>
+            <TextInput
+              value={site}
+              onChangeText={(valor) => atualizarSite(index, valor)}
+              editable={!ativo}
+              style={[styles.siteInput, ativo && styles.siteInputDisabled]}
+              placeholder="https://www.exemplo.com.br"
+              placeholderTextColor="#7f7f86"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable style={styles.siteRemoveButton} onPress={() => removerSite(index)} disabled={ativo}>
+              <Text style={styles.siteRemoveText}>Remover</Text>
+            </Pressable>
+          </View>
+        ))}
+
+        <View style={styles.siteAddRow}>
+          <TextInput
+            value={novoSite}
+            onChangeText={setNovoSite}
+            editable={!ativo}
+            style={[styles.siteInput, styles.siteInputAdd, ativo && styles.siteInputDisabled]}
+            placeholder="https://www.betano.bet.br"
+            placeholderTextColor="#7f7f86"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable style={[styles.siteAddButton, ativo && styles.disabled]} onPress={adicionarSite} disabled={ativo}>
+            <Text style={styles.siteAddText}>Adicionar</Text>
+          </Pressable>
+        </View>
+      </View>
 
       <Pressable style={styles.btnBack} onPress={() => router.push('/home')}>
         <Text style={styles.btnBackText}>Voltar para Inicio</Text>
@@ -220,6 +318,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 14,
   },
+  ringOuterActive: {
+    shadowColor: '#22c55e',
+    borderColor: '#20522f',
+  },
   ringInner: {
     width: 140,
     height: 140,
@@ -229,6 +331,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#101012',
+  },
+  ringInnerActive: {
+    borderColor: '#22c55e',
   },
   timer: { color: '#fff', fontSize: 40, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
   subtitle: { color: '#8f8f96', fontSize: 13, textAlign: 'center', marginBottom: 18 },
@@ -283,12 +388,77 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
+  itemChecked: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#2b2212',
+  },
+  itemInteractive: {
+    transform: [{ scale: 0.99 }],
+    borderColor: '#f7bf5a',
+  },
+  itemContent: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   itemText: { color: '#e5e5e5', fontSize: 14, fontWeight: '600' },
-  btnStart: { backgroundColor: '#F59E0B', borderRadius: 12, height: 50, justifyContent: 'center', alignItems: 'center', marginTop: 6 },
-  btnStartText: { color: '#111', fontSize: 15, fontWeight: 'bold' },
-  btnStop: { backgroundColor: '#3b1f1b', borderRadius: 12, height: 50, justifyContent: 'center', alignItems: 'center', marginTop: 6 },
-  btnStopText: { color: '#ffb6a8', fontSize: 15, fontWeight: 'bold' },
+  sitesHint: { color: '#9a9aa2', fontSize: 12, marginBottom: 10 },
+  siteRow: {
+    marginBottom: 10,
+    gap: 8,
+  },
+  siteInput: {
+    backgroundColor: '#141417',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    color: '#e5e5e5',
+    fontSize: 13,
+  },
+  siteInputAdd: {
+    flex: 1,
+  },
+  siteInputDisabled: {
+    opacity: 0.65,
+  },
+  siteRemoveButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#2b1c1c',
+    borderWidth: 1,
+    borderColor: '#5d3030',
+  },
+  siteRemoveText: {
+    color: '#f0b2b2',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  siteAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  siteAddButton: {
+    height: 42,
+    minWidth: 94,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 12,
+  },
+  siteAddText: {
+    color: '#111',
+    fontWeight: '800',
+    fontSize: 13,
+  },
   btnBack: {
     backgroundColor: '#222227',
     borderRadius: 12,

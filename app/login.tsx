@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -12,6 +13,28 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+type Usuario = {
+  id?: number;
+  usuario: string;
+  nomeCompleto?: string;
+  email: string;
+  senha: string;
+};
+
+function getApiBaseUrls() {
+  const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
+
+  if (Platform.OS === 'web') {
+    return ['http://localhost:3001'];
+  }
+
+  if (expoHost) {
+    return [`http://${expoHost}:3001`, 'http://localhost:3001'];
+  }
+
+  return ['http://localhost:3001'];
+}
 
 export default function Login() {
   const [login, setLogin] = useState('');
@@ -29,9 +52,23 @@ export default function Login() {
     try {
       setLoading(true);
 
-      const response = await fetch('http://localhost:3001/usuarios');
-      const usuarios: { usuario: string; email: string; senha: string }[] =
-        await response.json();
+      const urls = getApiBaseUrls();
+      let usuarios: Usuario[] | null = null;
+
+      for (const baseUrl of urls) {
+        try {
+          const response = await fetch(`${baseUrl}/usuarios`);
+          if (!response.ok) continue;
+          usuarios = await response.json();
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!usuarios) {
+        throw new Error('API indisponivel');
+      }
 
       const loginNormalizado = login.trim().toLowerCase();
       const usuarioEncontrado = usuarios.find((usuario) => {
@@ -42,7 +79,16 @@ export default function Login() {
       });
 
       if (usuarioEncontrado) {
-        await AsyncStorage.setItem('user', 'logado');
+        const nome = usuarioEncontrado.nomeCompleto || usuarioEncontrado.usuario;
+        await AsyncStorage.setItem(
+          'user',
+          JSON.stringify({
+            id: usuarioEncontrado.id,
+            nome,
+            email: usuarioEncontrado.email,
+            usuario: usuarioEncontrado.usuario,
+          })
+        );
         router.push('/home');
         return;
       }
@@ -60,10 +106,12 @@ export default function Login() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
     >
-      <Text style={styles.title}>Bem-vindo!</Text>
+      <Text style={styles.title}>Identifique-se</Text>
+      <Text style={styles.subtitle}>Digite seu e-mail e senha</Text>
 
+      <Text style={styles.emailLabel}>E-mail</Text>
       <TextInput
-        placeholder="Usuario ou email"
+        placeholder="kevin@uniaraxa.com"
         style={styles.input}
         onChangeText={setLogin}
         value={login}
@@ -72,9 +120,16 @@ export default function Login() {
         placeholderTextColor="#888"
       />
 
+      <View style={styles.senhaHeader}>
+        <Text style={styles.senhaLabel}>Senha</Text>
+        <TouchableOpacity onPress={() => alert('Funcionalidade em desenvolvimento')}>
+          <Text style={styles.linkText}>Esqueci minha senha</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.inputContainer}>
         <TextInput
-          placeholder="Senha"
+          placeholder="Digite sua senha"
           style={styles.inputSenha}
           onChangeText={setSenha}
           value={senha}
@@ -99,6 +154,13 @@ export default function Login() {
           <Text style={styles.buttonText}>Entrar</Text>
         )}
       </TouchableOpacity>
+
+      <View style={styles.signupContainer}>
+        <Text style={styles.signupText}>Primeiro login? </Text>
+        <TouchableOpacity onPress={() => router.push('/cadastro')}>
+          <Text style={styles.signupLink}>Criar conta</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -112,10 +174,16 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: 40,
+    marginBottom: 6,
     textAlign: 'center',
+  },
+  subtitle: {
+    color: '#aaa',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 40,
   },
   input: {
     backgroundColor: '#222',
@@ -126,12 +194,35 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontSize: 16,
   },
+  emailLabel: {
+    color: '#ddd',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#222',
     borderRadius: 8,
     marginBottom: 20,
+  },
+  senhaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  senhaLabel: {
+    color: '#ddd',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  linkText: {
+    color: '#fff',
+    textDecorationLine: 'underline',
+    fontSize: 14,
+    fontWeight: '600',
   },
   inputSenha: {
     flex: 1,
@@ -156,5 +247,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  signupContainer: {
+    marginTop: 36,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signupText: {
+    color: '#ddd',
+    fontSize: 18,
+  },
+  signupLink: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });
